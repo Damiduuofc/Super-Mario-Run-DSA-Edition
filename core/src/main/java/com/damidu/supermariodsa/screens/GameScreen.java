@@ -268,7 +268,9 @@ public class GameScreen implements Screen {
 
         // Update Goal Flag
         level.getGoalFlag().update(delta);
-        if (!level.getGoalFlag().isReached() && player.getBounds().overlaps(level.getGoalFlag().getBounds())) {
+        boolean reachedGoal = player.getBounds().overlaps(level.getGoalFlag().getBounds())
+            || player.getX() + player.getBounds().width >= level.getGoalFlag().getX();
+        if (!level.getGoalFlag().isReached() && reachedGoal) {
             level.getGoalFlag().triggerReached();
             game.getSoundManager().playVictory();
 

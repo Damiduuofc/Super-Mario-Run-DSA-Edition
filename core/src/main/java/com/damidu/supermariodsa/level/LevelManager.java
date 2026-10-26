@@ -149,17 +149,17 @@ public class LevelManager {
                 new Platform(1600f, 0f, 1100f, 48f, Platform.Type.BRICK), // Boss arena floor
 
                 // Stepping stone platforms
-                new Platform(240f, 140f, 90f, 24f, Platform.Type.BRICK),
-                new Platform(380f, 210f, 80f, 24f, Platform.Type.BRICK),
-                new Platform(540f, 150f, 60f, 22f, Platform.Type.FLOATING_GRASS),
-                new Platform(700f, 180f, 120f, 24f, Platform.Type.BRICK),
-                new Platform(900f, 220f, 90f, 24f, Platform.Type.BRICK),
-                new Platform(1020f, 140f, 60f, 22f, Platform.Type.FLOATING_GRASS),
+                new Platform(240f, 110f, 90f, 24f, Platform.Type.BRICK),
+                new Platform(380f, 150f, 80f, 24f, Platform.Type.BRICK),
+                new Platform(520f, 100f, 70f, 22f, Platform.Type.FLOATING_GRASS),
+                new Platform(700f, 130f, 120f, 24f, Platform.Type.BRICK),
+                new Platform(900f, 170f, 90f, 24f, Platform.Type.BRICK),
+                new Platform(1020f, 110f, 60f, 22f, Platform.Type.FLOATING_GRASS),
 
                 // Boss Arena elevated ledges
-                new Platform(1750f, 150f, 120f, 24f, Platform.Type.BRICK),
-                new Platform(2000f, 210f, 140f, 24f, Platform.Type.BRICK),
-                new Platform(2250f, 150f, 120f, 24f, Platform.Type.BRICK)
+                new Platform(1750f, 110f, 120f, 24f, Platform.Type.BRICK),
+                new Platform(2000f, 160f, 140f, 24f, Platform.Type.BRICK),
+                new Platform(2250f, 110f, 120f, 24f, Platform.Type.BRICK)
         };
 
         Coin[] coins = new Coin[] {
