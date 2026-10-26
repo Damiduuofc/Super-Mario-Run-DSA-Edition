@@ -31,6 +31,7 @@ import java.util.List;
 /**
  * Main Game Screen managing gameplay, camera scrolling, physics,
  * DSA stack undo, DSA event queue, and progressive level transitions.
+ * Supports explicit Save and Resume state persistence.
  */
 public class GameScreen implements Screen {
 
@@ -38,6 +39,7 @@ public class GameScreen implements Screen {
     private final OrthographicCamera camera;
     private final FitViewport viewport;
 
+    private final String playerName;
     private final int levelNumber;
     private final Level level;
     private final Player player;
@@ -45,55 +47,74 @@ public class GameScreen implements Screen {
     private final HUD hud;
 
     // --- MANDATORY DSA STRUCTURES ---
-    // Stack for undoing player movements (DSA Requirement C)
     private final CustomStack<PlayerStateSnapshot> undoStack;
-    // Queue for event notifications (DSA Requirement D)
     private final CustomQueue<GameEvent> eventQueue;
-    // Linked List for dynamic event records (DSA Requirement B)
     private final CustomLinkedList<String> eventHistoryList;
 
     private float snapshotTimer = 0f;
     private boolean paused = false;
+    private String pauseStatusMessage = null;
 
-    // Recursive 3-2-1-GO Countdown State (DSA Requirement G)
+    // Recursive 3-2-1-GO Countdown State
     private boolean inCountdown = true;
     private float countdownTimer = 0f;
     private int countdownIndex = 0;
     private final List<String> countdownSequence;
 
-    public GameScreen(SuperMarioGame game, int levelNumber, int lives, int score, int coins) {
+    public GameScreen(SuperMarioGame game, String playerName, int levelNumber,
+                      int lives, int health, int score, int coins, float spawnX, float spawnY) {
         this.game = game;
+        this.playerName = (playerName == null || playerName.trim().isEmpty()) ? SaveManager.getActivePlayerName() : playerName.trim();
         this.levelNumber = levelNumber;
         this.level = LevelManager.loadLevel(levelNumber);
 
         this.camera = new OrthographicCamera();
         this.viewport = new FitViewport(SuperMarioGame.VIRTUAL_WIDTH, SuperMarioGame.VIRTUAL_HEIGHT, camera);
 
-        this.player = new Player(level.getSpawnX(), level.getSpawnY());
+        float initialX = (spawnX > 0) ? spawnX : level.getSpawnX();
+        float initialY = (spawnY > 0) ? spawnY : level.getSpawnY();
+
+        this.player = new Player(initialX, initialY);
         this.player.setLives(lives);
+        this.player.setHealth(health > 0 ? health : Player.MAX_HEALTH);
         this.player.setScore(score);
         this.player.setCoins(coins);
 
         this.collisionManager = new CollisionManager();
         this.hud = new HUD(game.getFont(), game.getShapeRenderer());
 
-        // Initialize DSA Collections
-        this.undoStack = new CustomStack<>(80); // Stored up to 80 undo snapshots
-        this.eventQueue = new CustomQueue<>(40); // Event queue for notifications
-        this.eventHistoryList = new CustomLinkedList<>(); // Dynamic linked list event log
+        this.undoStack = new CustomStack<>(80);
+        this.eventQueue = new CustomQueue<>(40);
+        this.eventHistoryList = new CustomLinkedList<>();
 
-        // Recursively generate 3-2-1-GO sequence
         this.countdownSequence = RecursionHelper.buildCountdownTrace(3);
 
         eventQueue.enqueue(new GameEvent(GameEvent.EventType.LEVEL_COMPLETED,
-                "Started " + level.getName(), 0));
+                "Started " + level.getName() + " - " + this.playerName, 0));
 
-        // Save session checkpoint
-        SaveManager.saveProgress(levelNumber, player.getLives(), player.getScore(), player.getCoins());
+        // Initial save checkpoint
+        saveCurrentProgress();
+    }
+
+    public GameScreen(SuperMarioGame game, int levelNumber, int lives, int score, int coins) {
+        this(game, SaveManager.getActivePlayerName(), levelNumber, lives, Player.MAX_HEALTH, score, coins, -1f, -1f);
     }
 
     public GameScreen(SuperMarioGame game) {
         this(game, 1, 3, 0, 0);
+    }
+
+    public void saveCurrentProgress() {
+        SaveManager.saveProgress(
+                playerName,
+                levelNumber,
+                player.getLives(),
+                player.getHealth(),
+                player.getScore(),
+                player.getCoins(),
+                player.getX(),
+                player.getY()
+        );
     }
 
     @Override
@@ -115,6 +136,7 @@ public class GameScreen implements Screen {
 
         // 2. PAUSE PHASE
         if (paused) {
+            handlePauseKeys();
             renderWorld();
             renderPauseOverlay();
             return;
@@ -128,7 +150,7 @@ public class GameScreen implements Screen {
 
         // 5. RENDER HUD
         game.getBatch().begin();
-        hud.render(game.getBatch(), player, levelNumber, undoStack,
+        hud.render(game.getBatch(), playerName, player, levelNumber, undoStack,
                 SuperMarioGame.VIRTUAL_WIDTH, SuperMarioGame.VIRTUAL_HEIGHT);
         game.getBatch().end();
     }
@@ -148,11 +170,20 @@ public class GameScreen implements Screen {
     }
 
     private void updateGameplay(float delta) {
-        // Record undo snapshots periodically or before movements (DSA Stack)
+        // Record undo snapshots periodically (DSA Stack)
         snapshotTimer += delta;
         if (snapshotTimer >= 0.35f) {
             snapshotTimer = 0f;
             undoStack.push(player.createSnapshot());
+        }
+
+        // Quick-Save feature via F5 or K key
+        if (Gdx.input.isKeyJustPressed(Keys.F5) || Gdx.input.isKeyJustPressed(Keys.K)) {
+            saveCurrentProgress();
+            game.getSoundManager().playCoin();
+            hud.showNotification("PROGRESS SAVED! [World 1-" + levelNumber + " | " + player.getScore() + " pts]");
+            eventQueue.enqueue(new GameEvent(GameEvent.EventType.LEVEL_COMPLETED,
+                    "Game progress saved to file successfully!", 0));
         }
 
         // Handle user input
@@ -162,9 +193,10 @@ public class GameScreen implements Screen {
         // Update physics and collisions
         collisionManager.update(player, level.getPlatforms(), delta);
 
-        // Checkpoint detection
-        if (player.getX() >= level.getCheckpointX() && player.getX() < level.getCheckpointX() + 50f) {
+        // Checkpoint detection & Auto-save
+        if (player.getX() >= level.getCheckpointX() && player.getX() < level.getCheckpointX() + 40f) {
             player.setSpawnPoint(level.getCheckpointX(), 100f);
+            saveCurrentProgress();
         }
 
         // Update enemies
@@ -172,7 +204,6 @@ public class GameScreen implements Screen {
             enemy.update(delta, level.getPlatforms());
 
             if (!enemy.isDead() && !enemy.isStomped() && player.getBounds().overlaps(enemy.getBounds())) {
-                // Stomp test: If player is falling downwards and above the enemy's vertical center
                 boolean isStomp = player.getVelocity().y < 0 && (player.getY() + 10f >= enemy.getY() + enemy.getHeight() * 0.5f);
 
                 if (isStomp || player.hasStarPower()) {
@@ -187,7 +218,6 @@ public class GameScreen implements Screen {
                     eventQueue.enqueue(new GameEvent(GameEvent.EventType.ENEMY_DEFEATED, msg, pts));
                     eventHistoryList.addLast(msg);
                 } else {
-                    // Player takes damage
                     boolean damaged = player.takeDamage(1);
                     if (damaged) {
                         game.getSoundManager().playHurt();
@@ -222,7 +252,7 @@ public class GameScreen implements Screen {
                     eventQueue.enqueue(new GameEvent(GameEvent.EventType.POWERUP_ACQUIRED,
                             "Super Mushroom! +1 Health & Size!", 1000));
                 } else {
-                    player.activateStar(10f); // 10s star power
+                    player.activateStar(10f);
                     eventQueue.enqueue(new GameEvent(GameEvent.EventType.POWERUP_ACQUIRED,
                             "Star Power! Invincibility activated!", 1000));
                 }
@@ -235,18 +265,16 @@ public class GameScreen implements Screen {
             level.getGoalFlag().triggerReached();
             game.getSoundManager().playVictory();
 
-            // Calculate recursive coin bonus (DSA Requirement G)
             int coinBonus = RecursionHelper.calculateCoinBonus(player.getCoins());
             player.addScore(coinBonus);
 
             if (levelNumber < LevelManager.TOTAL_LEVELS) {
-                // Progress to next level!
-                SaveManager.saveProgress(levelNumber + 1, player.getLives(), player.getScore(), player.getCoins());
-                game.setScreen(new GameScreen(game, levelNumber + 1, player.getLives(), player.getScore(), player.getCoins()));
+                // Auto-save progression to next level
+                SaveManager.saveProgress(playerName, levelNumber + 1, player.getLives(), player.getHealth(), player.getScore(), player.getCoins(), 40f, 100f);
+                game.setScreen(new GameScreen(game, playerName, levelNumber + 1, player.getLives(), player.getHealth(), player.getScore(), player.getCoins(), 40f, 100f));
             } else {
-                // Game Victory! All 3 levels completed!
                 SaveManager.clearProgress();
-                game.getLeaderboardManager().recordScore("Player", player.getScore(), 3, player.getCoins());
+                game.getLeaderboardManager().recordScore(playerName, player.getScore(), 3, player.getCoins());
                 game.setScreen(new VictoryScreen(game, player.getScore(), player.getCoins()));
             }
             return;
@@ -256,20 +284,16 @@ public class GameScreen implements Screen {
         if (!player.isAlive()) {
             game.getSoundManager().playGameOver();
             SaveManager.clearProgress();
-            game.getLeaderboardManager().recordScore("Player", player.getScore(), levelNumber, player.getCoins());
+            game.getLeaderboardManager().recordScore(playerName, player.getScore(), levelNumber, player.getCoins());
             game.setScreen(new GameOverScreen(game, player.getScore(), levelNumber, player.getCoins()));
             return;
         }
 
-        // Update HUD notifications from Queue
         hud.update(delta, eventQueue);
-
-        // Update Camera Scrolling (DSA Scrolling World, v1.2)
         updateCameraScrolling();
     }
 
     private void updateCameraScrolling() {
-        // Camera smoothly follows player horizontally, clamped to level boundaries
         float targetCameraX = player.getX();
         float halfViewportWidth = SuperMarioGame.VIRTUAL_WIDTH / 2f;
         float minX = halfViewportWidth;
@@ -281,47 +305,28 @@ public class GameScreen implements Screen {
     }
 
     private void renderWorld() {
-        // Sky Background
         Color sky = level.getSkyColor();
         Gdx.gl.glClearColor(sky.r, sky.g, sky.b, sky.a);
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
 
         game.getShapeRenderer().setProjectionMatrix(camera.combined);
 
-        // 1. Background elements (clouds, hills, castle stones)
         renderDistantScenery();
 
-        // 2. Platforms
         game.getShapeRenderer().begin(ShapeRenderer.ShapeType.Filled);
         for (Platform platform : level.getPlatforms()) {
             platform.render(game.getShapeRenderer());
         }
-        game.getShapeRenderer().end();
-
-        // 3. Goal Flag
-        game.getShapeRenderer().begin(ShapeRenderer.ShapeType.Filled);
         level.getGoalFlag().render(game.getShapeRenderer());
-        game.getShapeRenderer().end();
-
-        // 4. Coins & Power-ups
-        game.getShapeRenderer().begin(ShapeRenderer.ShapeType.Filled);
         for (Coin coin : level.getCoins()) {
             coin.render(game.getShapeRenderer());
         }
         for (PowerUp p : level.getPowerUps()) {
             p.render(game.getShapeRenderer());
         }
-        game.getShapeRenderer().end();
-
-        // 5. Enemies
-        game.getShapeRenderer().begin(ShapeRenderer.ShapeType.Filled);
         for (Enemy enemy : level.getEnemies()) {
             enemy.render(game.getShapeRenderer());
         }
-        game.getShapeRenderer().end();
-
-        // 6. Player
-        game.getShapeRenderer().begin(ShapeRenderer.ShapeType.Filled);
         player.render(game.getShapeRenderer());
         game.getShapeRenderer().end();
     }
@@ -334,7 +339,6 @@ public class GameScreen implements Screen {
                 game.getShapeRenderer().circle(hx, 48f, 120f);
             }
         } else if (levelNumber == 3) {
-            // Castle fiery lava glow at bottom pits
             game.getShapeRenderer().setColor(0.95f, 0.32f, 0.08f, 1f);
             game.getShapeRenderer().rect(0, 0, level.getWidth(), 30f);
         }
@@ -360,33 +364,74 @@ public class GameScreen implements Screen {
     private void renderPauseOverlay() {
         game.getShapeRenderer().setProjectionMatrix(viewport.getCamera().combined);
         game.getShapeRenderer().begin(ShapeRenderer.ShapeType.Filled);
-        game.getShapeRenderer().setColor(0f, 0f, 0f, 0.65f);
+        game.getShapeRenderer().setColor(0f, 0f, 0f, 0.75f);
         game.getShapeRenderer().rect(0, 0, SuperMarioGame.VIRTUAL_WIDTH, SuperMarioGame.VIRTUAL_HEIGHT);
+
+        // Pause Menu Box
+        game.getShapeRenderer().setColor(0.18f, 0.22f, 0.35f, 0.95f);
+        game.getShapeRenderer().rect(160f, 90f, SuperMarioGame.VIRTUAL_WIDTH - 320f, SuperMarioGame.VIRTUAL_HEIGHT - 180f);
+        game.getShapeRenderer().setColor(0.95f, 0.82f, 0.15f, 1f);
+        game.getShapeRenderer().rect(160f, SuperMarioGame.VIRTUAL_HEIGHT - 130f, SuperMarioGame.VIRTUAL_WIDTH - 320f, 3f);
         game.getShapeRenderer().end();
 
         game.getBatch().setProjectionMatrix(viewport.getCamera().combined);
         game.getBatch().begin();
+
         game.getFont().setColor(Color.YELLOW);
         game.getFont().getData().setScale(1.8f);
-        game.getFont().draw(game.getBatch(), "GAME PAUSED", 310f, 300f);
+        game.getFont().draw(game.getBatch(), "GAME PAUSED", 290f, 375f);
         game.getFont().getData().setScale(1.0f);
+
         game.getFont().setColor(Color.WHITE);
-        game.getFont().draw(game.getBatch(), "Press [P] or [ESC] to Resume", 300f, 240f);
-        game.getFont().draw(game.getBatch(), "Press [M] to return to Main Menu", 280f, 200f);
+        game.getFont().draw(game.getBatch(), "[P] or [R]  --  Resume Game", 240f, 310f);
+
+        game.getFont().setColor(Color.GREEN);
+        game.getFont().draw(game.getBatch(), "[S]         --  Save Progress to File", 240f, 270f);
+
+        game.getFont().setColor(Color.CYAN);
+        game.getFont().draw(game.getBatch(), "[M]         --  Save Progress & Exit to Main Menu", 240f, 230f);
+
+        game.getFont().setColor(Color.LIGHT_GRAY);
+        game.getFont().draw(game.getBatch(), "[Q]         --  Quit to Main Menu without saving", 240f, 190f);
+
+        if (pauseStatusMessage != null) {
+            game.getFont().setColor(Color.GOLD);
+            game.getFont().draw(game.getBatch(), pauseStatusMessage, 220f, 140f);
+        }
+
         game.getBatch().end();
     }
 
-    private void handleGlobalKeys() {
-        // Pause / Resume Toggle
-        if (Gdx.input.isKeyJustPressed(Keys.P) || Gdx.input.isKeyJustPressed(Keys.ESCAPE)) {
-            paused = !paused;
-            game.getSoundManager().playJump();
+    private void handlePauseKeys() {
+        if (Gdx.input.isKeyJustPressed(Keys.S)) {
+            saveCurrentProgress();
+            game.getSoundManager().playCoin();
+            pauseStatusMessage = "PROGRESS SAVED TO FILE! (" + playerName + " | World 1-" + levelNumber + ")";
         }
 
-        // Return to main menu when paused
-        if (paused && Gdx.input.isKeyJustPressed(Keys.M)) {
+        if (Gdx.input.isKeyJustPressed(Keys.M)) {
+            saveCurrentProgress();
             game.setScreen(new MainMenuScreen(game));
             return;
+        }
+
+        if (Gdx.input.isKeyJustPressed(Keys.Q)) {
+            game.setScreen(new MainMenuScreen(game));
+            return;
+        }
+
+        if (Gdx.input.isKeyJustPressed(Keys.R) || Gdx.input.isKeyJustPressed(Keys.P) || Gdx.input.isKeyJustPressed(Keys.ESCAPE)) {
+            paused = false;
+            pauseStatusMessage = null;
+            game.getSoundManager().playJump();
+        }
+    }
+
+    private void handleGlobalKeys() {
+        if (Gdx.input.isKeyJustPressed(Keys.P) || Gdx.input.isKeyJustPressed(Keys.ESCAPE)) {
+            paused = !paused;
+            pauseStatusMessage = null;
+            game.getSoundManager().playJump();
         }
 
         // DSA Stack Undo Trigger (Keys Z or U)
@@ -402,10 +447,7 @@ public class GameScreen implements Screen {
     }
 
     @Override
-    public void resize(int width, int height) {
-        viewport.update(width, height);
-    }
-
+    public void resize(int width, int height) { viewport.update(width, height); }
     @Override
     public void pause() { this.paused = true; }
     @Override

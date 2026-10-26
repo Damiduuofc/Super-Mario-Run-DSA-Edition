@@ -13,7 +13,7 @@ import com.damidu.supermariodsa.persistence.SaveManager;
 
 /**
  * Main Menu screen providing navigation between Start, Continue,
- * Leaderboard, Instructions, Settings, and Exit.
+ * Player Profile switching, Leaderboard, Instructions, Settings, and Exit.
  */
 public class MainMenuScreen implements Screen {
 
@@ -21,9 +21,11 @@ public class MainMenuScreen implements Screen {
     private final OrthographicCamera camera;
     private final FitViewport viewport;
 
-    private final String[] menuItems;
+    private String[] menuItems;
     private int selectedIndex = 0;
-    private final boolean hasSavedGame;
+    private boolean hasSavedGame;
+    private SaveManager.GameProgress savedProgress;
+    private String activePlayerName;
 
     public MainMenuScreen(SuperMarioGame game) {
         this.game = game;
@@ -31,10 +33,25 @@ public class MainMenuScreen implements Screen {
         this.viewport = new FitViewport(SuperMarioGame.VIRTUAL_WIDTH, SuperMarioGame.VIRTUAL_HEIGHT, camera);
         this.camera.position.set(SuperMarioGame.VIRTUAL_WIDTH / 2f, SuperMarioGame.VIRTUAL_HEIGHT / 2f, 0f);
 
+        this.activePlayerName = SaveManager.getActivePlayerName();
+        refreshMenuOptions();
+    }
+
+    private void refreshMenuOptions() {
         this.hasSavedGame = SaveManager.hasSavedProgress();
+        this.savedProgress = SaveManager.loadProgress();
+
+        String continueLabel;
+        if (hasSavedGame && savedProgress != null) {
+            continueLabel = "CONTINUE: " + savedProgress.getFormattedSummary();
+        } else {
+            continueLabel = "CONTINUE GAME (No Save Available)";
+        }
+
         this.menuItems = new String[]{
-                "START GAME",
-                hasSavedGame ? "CONTINUE GAME" : "CONTINUE GAME (No Save)",
+                "START NEW GAME",
+                continueLabel,
+                "PLAYER PROFILE: [" + activePlayerName + "] (Press TAB to switch)",
                 "LEADERBOARD & DSA SEARCH",
                 "HOW TO PLAY & DSA GUIDE",
                 "SETTINGS (AUDIO: " + (game.getSoundManager().isMuted() ? "OFF" : "ON") + ")",
@@ -56,12 +73,12 @@ public class MainMenuScreen implements Screen {
         game.getBatch().setProjectionMatrix(camera.combined);
         game.getShapeRenderer().setProjectionMatrix(camera.combined);
 
-        // Decorative background banner
+        // Decorative background panel
         game.getShapeRenderer().begin(ShapeRenderer.ShapeType.Filled);
         game.getShapeRenderer().setColor(0.18f, 0.22f, 0.35f, 1f);
-        game.getShapeRenderer().rect(100f, 40f, SuperMarioGame.VIRTUAL_WIDTH - 200f, SuperMarioGame.VIRTUAL_HEIGHT - 80f);
+        game.getShapeRenderer().rect(60f, 35f, SuperMarioGame.VIRTUAL_WIDTH - 120f, SuperMarioGame.VIRTUAL_HEIGHT - 70f);
         game.getShapeRenderer().setColor(0.95f, 0.82f, 0.15f, 1f);
-        game.getShapeRenderer().rect(100f, SuperMarioGame.VIRTUAL_HEIGHT - 120f, SuperMarioGame.VIRTUAL_WIDTH - 200f, 4f);
+        game.getShapeRenderer().rect(60f, SuperMarioGame.VIRTUAL_HEIGHT - 110f, SuperMarioGame.VIRTUAL_WIDTH - 120f, 4f);
         game.getShapeRenderer().end();
 
         game.getBatch().begin();
@@ -69,30 +86,32 @@ public class MainMenuScreen implements Screen {
         // Title
         game.getFont().setColor(Color.YELLOW);
         game.getFont().getData().setScale(1.5f);
-        game.getFont().draw(game.getBatch(), "SUPER MARIO RUN", 260f, 420f);
+        game.getFont().draw(game.getBatch(), "SUPER MARIO RUN", 260f, 430f);
         game.getFont().getData().setScale(1.0f);
         game.getFont().setColor(0.4f, 0.85f, 1.0f, 1f);
-        game.getFont().draw(game.getBatch(), "-- DATA STRUCTURES & ALGORITHMS EDITION --", 200f, 385f);
+        game.getFont().draw(game.getBatch(), "-- DATA STRUCTURES & ALGORITHMS EDITION --", 200f, 395f);
 
         // Menu options
-        float startY = 320f;
+        float startY = 340f;
         for (int i = 0; i < menuItems.length; i++) {
             if (i == selectedIndex) {
                 game.getFont().setColor(Color.GREEN);
-                game.getFont().draw(game.getBatch(), ">>  " + menuItems[i] + "  <<", 250f, startY - (i * 44f));
+                game.getFont().draw(game.getBatch(), ">>  " + menuItems[i] + "  <<", 100f, startY - (i * 38f));
             } else {
                 if (i == 1 && !hasSavedGame) {
                     game.getFont().setColor(Color.GRAY);
+                } else if (i == 2) {
+                    game.getFont().setColor(0.4f, 0.85f, 1.0f, 1f);
                 } else {
                     game.getFont().setColor(Color.WHITE);
                 }
-                game.getFont().draw(game.getBatch(), "    " + menuItems[i], 250f, startY - (i * 44f));
+                game.getFont().draw(game.getBatch(), "    " + menuItems[i], 100f, startY - (i * 38f));
             }
         }
 
         // Navigation Footer
         game.getFont().setColor(0.8f, 0.8f, 0.8f, 1f);
-        game.getFont().draw(game.getBatch(), "Navigate: [W/S] or [Up/Down]  |  Select: [ENTER] or [SPACE]", 160f, 65f);
+        game.getFont().draw(game.getBatch(), "Navigate: [W/S] or [Up/Down]  |  Select: [ENTER]  |  Switch Name: [TAB]", 120f, 55f);
 
         game.getBatch().end();
     }
@@ -107,6 +126,13 @@ public class MainMenuScreen implements Screen {
             game.getSoundManager().playJump();
         }
 
+        // TAB key quickly cycles active player profile name
+        if (Gdx.input.isKeyJustPressed(Keys.TAB)) {
+            activePlayerName = SaveManager.cycleNextProfile(activePlayerName);
+            refreshMenuOptions();
+            game.getSoundManager().playCoin();
+        }
+
         if (Gdx.input.isKeyJustPressed(Keys.ENTER) || Gdx.input.isKeyJustPressed(Keys.SPACE)) {
             selectOption(selectedIndex);
         }
@@ -116,31 +142,40 @@ public class MainMenuScreen implements Screen {
         game.getSoundManager().playCoin();
 
         switch (index) {
-            case 0: // Start Game
+            case 0: // Start New Game
                 SaveManager.clearProgress();
-                game.setScreen(new GameScreen(game, 1, 3, 0, 0));
+                game.setScreen(new GameScreen(game, activePlayerName, 1, 3, 3, 0, 0, 40f, 100f));
                 break;
-            case 1: // Continue Game
-                if (hasSavedGame) {
-                    SaveManager.GameProgress progress = SaveManager.loadProgress();
-                    if (progress != null) {
-                        game.setScreen(new GameScreen(game, progress.currentLevel, progress.lives, progress.score, progress.coins));
-                    } else {
-                        game.setScreen(new GameScreen(game, 1, 3, 0, 0));
-                    }
+            case 1: // Continue Game (Resume Progress)
+                if (hasSavedGame && savedProgress != null) {
+                    game.setScreen(new GameScreen(
+                            game,
+                            savedProgress.playerName,
+                            savedProgress.currentLevel,
+                            savedProgress.lives,
+                            savedProgress.health,
+                            savedProgress.score,
+                            savedProgress.coins,
+                            savedProgress.checkpointX,
+                            savedProgress.checkpointY
+                    ));
                 }
                 break;
-            case 2: // Leaderboard
+            case 2: // Switch Player Profile Name
+                activePlayerName = SaveManager.cycleNextProfile(activePlayerName);
+                refreshMenuOptions();
+                break;
+            case 3: // Leaderboard
                 game.setScreen(new LeaderboardScreen(game));
                 break;
-            case 3: // Instructions
+            case 4: // Instructions
                 game.setScreen(new HowToPlayScreen(game));
                 break;
-            case 4: // Settings / Audio Toggle
+            case 5: // Settings / Audio Toggle
                 game.getSoundManager().toggleMute();
-                menuItems[4] = "SETTINGS (AUDIO: " + (game.getSoundManager().isMuted() ? "OFF" : "ON") + ")";
+                refreshMenuOptions();
                 break;
-            case 5: // Exit
+            case 6: // Exit
                 Gdx.app.exit();
                 break;
         }

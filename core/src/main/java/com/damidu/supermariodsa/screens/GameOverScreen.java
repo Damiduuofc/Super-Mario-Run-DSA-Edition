@@ -8,6 +8,7 @@ import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.OrthographicCamera;
 import com.badlogic.gdx.utils.viewport.FitViewport;
 import com.damidu.supermariodsa.SuperMarioGame;
+import com.damidu.supermariodsa.persistence.SaveManager;
 
 public class GameOverScreen implements Screen {
 
@@ -17,12 +18,14 @@ public class GameOverScreen implements Screen {
     private final int finalScore;
     private final int levelReached;
     private final int coinsCollected;
+    private final String playerName;
 
     public GameOverScreen(SuperMarioGame game, int finalScore, int levelReached, int coinsCollected) {
         this.game = game;
         this.finalScore = finalScore;
         this.levelReached = levelReached;
         this.coinsCollected = coinsCollected;
+        this.playerName = SaveManager.getActivePlayerName();
 
         this.camera = new OrthographicCamera();
         this.viewport = new FitViewport(SuperMarioGame.VIRTUAL_WIDTH, SuperMarioGame.VIRTUAL_HEIGHT, camera);
@@ -35,7 +38,8 @@ public class GameOverScreen implements Screen {
     @Override
     public void render(float delta) {
         if (Gdx.input.isKeyJustPressed(Keys.R) || Gdx.input.isKeyJustPressed(Keys.SPACE) || Gdx.input.isKeyJustPressed(Keys.ENTER)) {
-            game.setScreen(new GameScreen(game, 1, 3, 0, 0));
+            SaveManager.clearProgress();
+            game.setScreen(new GameScreen(game, playerName, 1, 3, 3, 0, 0, 40f, 100f));
             return;
         }
         if (Gdx.input.isKeyJustPressed(Keys.M) || Gdx.input.isKeyJustPressed(Keys.ESCAPE)) {
@@ -53,9 +57,12 @@ public class GameOverScreen implements Screen {
 
         game.getFont().setColor(Color.RED);
         game.getFont().getData().setScale(2.2f);
-        game.getFont().draw(game.getBatch(), "GAME OVER", 310f, 380f);
+        game.getFont().draw(game.getBatch(), "GAME OVER", 310f, 390f);
 
         game.getFont().getData().setScale(1.0f);
+        game.getFont().setColor(0.4f, 0.85f, 1.0f, 1f);
+        game.getFont().draw(game.getBatch(), "Player: " + playerName, 320f, 320f);
+
         game.getFont().setColor(Color.WHITE);
         game.getFont().draw(game.getBatch(), String.format("Final Score: %d points", finalScore), 320f, 290f);
         game.getFont().draw(game.getBatch(), String.format("Reached: World 1-%d", levelReached), 320f, 260f);

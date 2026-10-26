@@ -12,7 +12,12 @@
    - [Gameplay Mechanics & Rules](#gameplay-mechanics--rules)
    - [Power-Ups & Items](#power-ups--items)
    - [The 3 Progressive Levels](#the-3-progressive-levels)
-4. [Data Structures & Algorithms (DSA) Architecture](#4-data-structures--algorithms-dsa-architecture)
+4. [Save, Resume & Player Profile System](#4-save-resume--player-profile-system)
+   - [How Saving Works](#how-saving-works)
+   - [How Resuming Works](#how-resuming-works)
+   - [Player Profile Name Switching](#player-profile-name-switching)
+   - [Save File Format](#save-file-format)
+5. [Data Structures & Algorithms (DSA) Architecture](#5-data-structures--algorithms-dsa-architecture)
    - [A. Arrays](#a-arrays-fixed-world-layouts--resizable-leaderboard)
    - [B. Doubly Linked List](#b-doubly-linked-list-customlinkedlistt)
    - [C. Stack (LIFO) & Movement Undo](#c-stack-lifo--movement-undo-customstackt)
@@ -20,29 +25,31 @@
    - [E. Sorting: Manual Bubble Sort](#e-sorting-manual-bubble-sort-bubblesortjava)
    - [F. Searching: Linear & Recursive Binary Search](#f-searching-linear-search--recursive-binary-search)
    - [G. Recursion: Countdown & Score Bonus](#g-recursion-countdown--score-bonus-recurrence)
-5. [Summary of Algorithmic Complexities (Big-O)](#5-summary-of-algorithmic-complexities-big-o)
-6. [Interactive DSA Demonstrations in the Game](#6-interactive-dsa-demonstrations-in-the-game)
-7. [Automated Testing Suite (JUnit 5)](#7-automated-testing-suite-junit-5)
-8. [Viva Defense Questions & Answers](#8-viva-defense-questions--answers)
+6. [Summary of Algorithmic Complexities (Big-O)](#6-summary-of-algorithmic-complexities-big-o)
+7. [Interactive DSA Demonstrations in the Game](#7-interactive-dsa-demonstrations-in-the-game)
+8. [Automated Testing Suite (JUnit 5)](#8-automated-testing-suite-junit-5)
+9. [Viva Defense Questions & Answers](#9-viva-defense-questions--answers)
 
 ---
 
 ## 1. Project Overview
 
-**Super Mario Run — DSA Edition** is a complete, original 2D side-scrolling platformer built with Java 21 and the libGDX framework. The game features real-time kinematics, camera tracking, Axis-Aligned Bounding Box (AABB) collision detection, enemies, collectibles, and progressive levels ending in a final boss encounter.
+**Super Mario Run — DSA Edition** is a complete, original 2D side-scrolling platformer built with Java 21 and the libGDX framework. The game features real-time kinematics, camera tracking, Axis-Aligned Bounding Box (AABB) collision detection, enemies, collectibles, state saving, and progressive levels ending in a final boss encounter.
 
 Rather than relying on built-in collections from `java.util.*`, the core data structures and algorithms required by the university syllabus were **implemented from scratch in pure Java** (`com.damidu.supermariodsa.dsa`). Each structure serves an essential gameplay role rather than merely satisfying a checklist.
 
 ```mermaid
 flowchart TD
-    A["MainMenuScreen"] --> B["GameScreen (World 1-1)"]
-    B --> C["World 1-2 (Underground)"]
-    C --> D["World 1-3 (Bowser's Castle)"]
+    A["MainMenuScreen"] -->|Start New Game| B["GameScreen (World 1-1)"]
+    A -->|Continue Game / Resume| RES["Resume Saved Run (World 1-X)"]
+    RES --> B
+    B -->|Level Complete| C["World 1-2 (Underground)"]
+    C -->|Level Complete| D["World 1-3 (Bowser's Castle)"]
     D --> E["VictoryScreen"]
-    B -.-> F["GameOverScreen"]
+    B -.->|Lives Lost| F["GameOverScreen"]
     A --> G["LeaderboardScreen (DSA Inspector)"]
     A --> H["HowToPlayScreen (DSA Guide)"]
-    B <--> I["PauseScreen"]
+    B <-->|P / ESC| I["Pause Menu (Save & Resume Options)"]
 ```
 
 ---
@@ -66,7 +73,7 @@ flowchart TD
    ./gradlew lwjgl3:run
    ```
 
-3. **Run all 30 automated unit tests:**
+3. **Run all 33 automated unit tests:**
    ```bash
    ./gradlew test
    ```
@@ -77,27 +84,27 @@ flowchart TD
    java -jar lwjgl3/build/libs/SuperMarioDSA-1.0.0.jar
    ```
 
-> [!NOTE]
-> On macOS, LWJGL3 requires GLFW to execute on the first thread. This is handled automatically through `jvmArgs("-XstartOnFirstThread")` in `lwjgl3/build.gradle` and the included `StartupHelper.java`.
-
 ---
 
 ## 3. Gameplay Guide & Controls
 
 ### Keyboard Controls
 
-| Key | In Gameplay | In Menus & Leaderboard |
-| :--- | :--- | :--- |
-| <kbd>A</kbd> / <kbd>D</kbd> or <kbd>←</kbd> / <kbd>→</kbd> | Run Left / Right (with acceleration and friction) | — |
-| <kbd>W</kbd> / <kbd>↑</kbd> / <kbd>Space</kbd> | Jump (allowed only when on solid ground) | Navigate Up / Select |
-| <kbd>S</kbd> / <kbd>↓</kbd> | Crouch / Fast descent | Navigate Down |
-| <kbd>Z</kbd> or <kbd>U</kbd> | **UNDO MOVEMENT** (Pops previous snapshot from Stack) | — |
-| <kbd>P</kbd> or <kbd>Esc</kbd> | Pause / Resume game | Close dialog / Back |
-| <kbd>M</kbd> | Return to Main Menu | Back to Main Menu |
-| <kbd>R</kbd> | Quick Respawn at last checkpoint | — |
-| <kbd>B</kbd> | — | Run manual **Bubble Sort** demo |
-| <kbd>L</kbd> | — | Run **Linear Search** with step trace |
-| <kbd>S</kbd> | — | Run **Recursive Binary Search** with depth trace |
+| Key | In Gameplay | In Pause Menu | In Main Menu & Leaderboard |
+| :--- | :--- | :--- | :--- |
+| <kbd>A</kbd> / <kbd>D</kbd> or <kbd>←</kbd> / <kbd>→</kbd> | Run Left / Right (acceleration & friction) | — | — |
+| <kbd>W</kbd> / <kbd>↑</kbd> / <kbd>Space</kbd> | Jump (allowed only when on ground) | — | Navigate Up / Select |
+| <kbd>S</kbd> / <kbd>↓</kbd> | Crouch / Fast descent | **Save Progress to File** | Navigate Down |
+| <kbd>F5</kbd> or <kbd>K</kbd> | **QUICK SAVE PROGRESS** (Instant File Save) | — | — |
+| <kbd>Z</kbd> or <kbd>U</kbd> | **UNDO MOVEMENT** (Pops state from Stack) | — | — |
+| <kbd>P</kbd> or <kbd>Esc</kbd> | Pause / Resume game | Resume Game | Close modal / Back |
+| <kbd>M</kbd> | Return to Main Menu | **Save & Exit to Menu** | Back to Main Menu |
+| <kbd>Q</kbd> | — | Quit without saving | — |
+| <kbd>Tab</kbd> | — | — | **Switch Player Profile Name** |
+| <kbd>R</kbd> | Quick Respawn | Resume Game | Retry (on Game Over) |
+| <kbd>B</kbd> | — | — | Run manual **Bubble Sort** demo |
+| <kbd>L</kbd> | — | — | Run **Linear Search** with step trace |
+| <kbd>S</kbd> | — | — | Run **Recursive Binary Search** with depth trace |
 
 ---
 
@@ -105,16 +112,16 @@ flowchart TD
 
 1. **Kinematics & Gravity:**
    - Mario experiences constant gravitational acceleration of $-1200\text{ px/s}^2$ with a terminal velocity of $-800\text{ px/s}$.
-   - Horizontal movement features responsive acceleration ($1200\text{ px/s}^2$) and surface friction ($1000\text{ px/s}^2$) so Mario does not instantly halt.
+   - Horizontal movement features responsive acceleration ($1200\text{ px/s}^2$) and surface friction ($1000\text{ px/s}^2$).
 2. **Jumping & Stomping Enemies:**
    - Mario jumps with an upward impulse of $520\text{ px/s}$ (producing an arc of approximately 120 pixels).
    - Jumping onto an enemy from above defeats them, plays a stomp sound, awards bonus score, and bounces Mario back into the air.
 3. **Health & Lives System:**
    - Mario starts with **3 Lives** and **3 Hearts** (Health Points) per life.
    - Touching an enemy horizontally damages Mario by 1 heart and grants **1.8 seconds of invincibility** (indicated by character flickering).
-   - Falling into a bottomless pit or losing all 3 hearts deducts 1 life and resets Mario to the level start or checkpoint.
+   - Falling into a bottomless pit or losing all 3 hearts deducts 1 life and resets Mario to the checkpoint.
 4. **Camera Scrolling:**
-   - An orthographic camera smoothly follows Mario horizontally, clamped between $x = 400$ and $x = \text{LevelWidth} - 400$, ensuring the player never loses sight of the action.
+   - An orthographic camera smoothly follows Mario horizontally, clamped between $x = 400$ and $x = \text{LevelWidth} - 400$.
 
 ---
 
@@ -127,13 +134,6 @@ flowchart TD
 ---
 
 ### The 3 Progressive Levels
-
-```mermaid
-graph LR
-    L1["World 1-1: Sunny Grassland<br/>(Width: 2200px | 4 Goombas)"] --> L2["World 1-2: Underground Cavern<br/>(Width: 2560px | Koopas & Toxic Pits)"]
-    L2 --> L3["World 1-3: Bowser's Fortress<br/>(Width: 2750px | Lava Pits & Boss Bowser)"]
-    L3 --> VIC["VICTORY SCREEN<br/>(Total Score + Recursive Coin Bonus)"]
-```
 
 1. **World 1-1: Sunny Grassland (Tutorial & Fundamentals):**
    - Introduces basic platforming, 80px pit gaps, mystery blocks, stepping brick stairs, and patrol Goombas.
@@ -148,7 +148,46 @@ graph LR
 
 ---
 
-## 4. Data Structures & Algorithms (DSA) Architecture
+## 4. Save, Resume & Player Profile System
+
+The game includes a local file persistence system managed by [`SaveManager.java`](file:///Users/damiduuofc/Downloads/DSA%20game/core/src/main/java/com/damidu/supermariodsa/persistence/SaveManager.java).
+
+### How Saving Works
+1. **Quick-Save in Gameplay (<kbd>F5</kbd> or <kbd>K</kbd>):**
+   - Pressing <kbd>F5</kbd> or <kbd>K</kbd> at any point immediately serializes your player name, level, lives, health, score, coins, and exact coordinates to disk.
+   - A golden HUD banner pops up: `PROGRESS SAVED! [World 1-X | X pts]`.
+2. **Pause Menu Saving (<kbd>S</kbd> or <kbd>M</kbd>):**
+   - Press <kbd>P</kbd> or <kbd>Esc</kbd> to pause.
+   - Press <kbd>S</kbd> to save progress to file while staying in the game.
+   - Press <kbd>M</kbd> to save progress and return safely to the Main Menu.
+3. **Automatic Checkpoint & Level Auto-Save:**
+   - Walking past a level checkpoint automatically saves progress.
+   - Completing a stage automatically records progress for the next level.
+
+### How Resuming Works
+1. In the **Main Menu**, the game inspects `save_progress.txt`.
+2. If saved progress exists, the second option dynamically displays a live summary:
+   `>> CONTINUE: Damidu (World 1-2 | 3 Lives | 1,850 pts) <<`
+3. Selecting this option immediately resumes the session at the exact level, with saved score, coins, lives, health, and checkpoint coordinates intact.
+
+### Player Profile Name Switching
+- Press <kbd>Tab</kbd> on the Main Menu to cycle between student profile names:
+  `Damidu` $\rightarrow$ `Amal` $\rightarrow$ `Nimal` $\rightarrow$ `Kasun` $\rightarrow$ `Mario`.
+- The active name is preserved in `active_profile.txt` and is automatically displayed in the HUD and stamped on leaderboard records.
+
+### Save File Format
+Files are stored locally in plain-text CSV format for transparency during grading:
+- `save_progress.txt`:
+  ```text
+  Damidu;2;3;2;1850;14;1200.00;100.00;1793001850000
+  (Format: PlayerName;Level;Lives;Health;Score;Coins;CheckpointX;CheckpointY;Timestamp)
+  ```
+- `active_profile.txt`: Stores the currently selected student name.
+- `leaderboard.txt`: Stores high-score records sorted descending by score.
+
+---
+
+## 5. Data Structures & Algorithms (DSA) Architecture
 
 The project implements seven core DSA concepts in real Java source code:
 
@@ -189,55 +228,27 @@ com.damidu.supermariodsa.dsa
   - `removeFirst()` / `removeLast()`: Unlinks head or tail in $O(1)$ via `prev`/`next` references.
   - Implements `Iterable<T>` to allow standard `for (T item : list)` traversal.
 
-```mermaid
-graph LR
-    H["Head Pointer"] --> N1["Node: Event 1"]
-    N1 <--> N2["Node: Event 2"]
-    N2 <--> N3["Node: Event 3"]
-    T["Tail Pointer"] --> N3
-```
-
 ---
 
 ### C. Stack (LIFO) & Movement Undo: `CustomStack<T>`
 - **Class:** [`CustomStack.java`](file:///Users/damiduuofc/Downloads/DSA%20game/core/src/main/java/com/damidu/supermariodsa/dsa/CustomStack.java)
 - **Role in Game:** Powers the player's **Undo Movement** feature (<kbd>Z</kbd> or <kbd>U</kbd> keys).
-- **Justification:** Player movements occur in chronological order. To undo the most recent mistake (e.g., misjudged jump or enemy collision), the system must restore the most recently captured state first (**Last-In, First-Out**).
+- **Justification:** Player movements occur in chronological order. To undo the most recent mistake, the system must restore the most recently captured state first (**Last-In, First-Out**).
 - **Implementation & Capacity Management:**
   - Every 0.35 seconds, a `PlayerStateSnapshot` $(x, y, v_x, v_y, \text{health}, \text{score}, \text{coins})$ is pushed to the stack.
   - When the player presses <kbd>Z</kbd> or <kbd>U</kbd>, `undoStack.pop()` restores the state.
   - Memory leak protection: The stack enforces a maximum capacity of 80 snapshots. If full, `trimBottom()` unlinks the oldest node at the bottom of the stack in $O(n)$, keeping recent history bounded in $O(1)$ space.
-
-```mermaid
-sequenceDiagram
-    participant Player
-    participant Stack as CustomStack (LIFO)
-    Player->>Stack: push(Snapshot t=1.0s)
-    Player->>Stack: push(Snapshot t=1.35s)
-    Player->>Stack: push(Snapshot t=1.70s) [TOP]
-    Note over Player: Player makes misstep
-    Player->>Stack: pop() -> Snapshot t=1.70s
-    Stack-->>Player: Restores position, velocity, and health
-```
 
 ---
 
 ### D. Queue (FIFO) & Event Notifications: `CustomQueue<T>`
 - **Class:** [`CustomQueue.java`](file:///Users/damiduuofc/Downloads/DSA%20game/core/src/main/java/com/damidu/supermariodsa/dsa/CustomQueue.java)
 - **Role in Game:** Manages the game notification toast pipeline.
-- **Justification:** Gameplay events (coins collected, enemies defeated, power-ups acquired, damage taken) occur asynchronously. If displayed all at once, notifications would overlap. A **First-In, First-Out (FIFO)** queue buffers these events, allowing the HUD to dequeue and display them sequentially in chronological order.
+- **Justification:** Gameplay events occur asynchronously. A **First-In, First-Out (FIFO)** queue buffers these events, allowing the HUD to dequeue and display them sequentially in chronological order.
 - **Core Operations:**
   - `enqueue(GameEvent event)`: Inserts at `rear` in $O(1)$.
   - `dequeue()`: Extracts from `front` in $O(1)$.
   - Handles empty and full states safely without throwing unhandled exceptions.
-
-```mermaid
-graph LR
-    IN["Gameplay Event<br/>(Coin / Stomp / Hurt)"] --> REAR["rear -> Node N"]
-    REAR --> MID["..."]
-    MID --> FRONT["front -> Node 1"]
-    FRONT --> OUT["HUD Toast Notification<br/>(Displayed for 2.2s)"]
-```
 
 ---
 
@@ -251,31 +262,6 @@ graph LR
   - **Best Case:** $O(n)$ comparisons and $0$ swaps when the leaderboard is already sorted.
   - **Worst / Average Case:** $O(n^2)$ comparisons and swaps.
   - **Space Complexity:** $O(1)$ auxiliary space (in-place swap).
-
-```java
-public static SortMetrics sort(LeaderboardEntry[] entries, int count) {
-    SortMetrics metrics = new SortMetrics();
-    int n = Math.min(count, entries.length);
-
-    for (int i = 0; i < n - 1; i++) {
-        boolean swapped = false;
-        metrics.passes++;
-        for (int j = 0; j < n - i - 1; j++) {
-            metrics.comparisons++;
-            // Descending order: swap if left entry has lower score than right
-            if (entries[j].getScore() < entries[j + 1].getScore()) {
-                LeaderboardEntry temp = entries[j];
-                entries[j] = entries[j + 1];
-                entries[j + 1] = temp;
-                swapped = true;
-                metrics.swaps++;
-            }
-        }
-        if (!swapped) break; // Early exit!
-    }
-    return metrics;
-}
-```
 
 ---
 
@@ -314,7 +300,7 @@ public static SortMetrics sort(LeaderboardEntry[] entries, int count) {
 
 ---
 
-## 5. Summary of Algorithmic Complexities (Big-O)
+## 6. Summary of Algorithmic Complexities (Big-O)
 
 | Operation / Feature | Underlying Structure | Time (Best) | Time (Worst) | Space (Auxiliary) |
 | :--- | :--- | :---: | :---: | :---: |
@@ -334,32 +320,36 @@ public static SortMetrics sort(LeaderboardEntry[] entries, int count) {
 
 ---
 
-## 6. Interactive DSA Demonstrations in the Game
+## 7. Interactive DSA Demonstrations in the Game
 
 During your university viva or presentation, you can demonstrate the algorithms live inside the application:
 
 1. **Demonstrating Movement Undo (Stack):**
    - Play any level, jump across obstacles, and press <kbd>Z</kbd> or <kbd>U</kbd>.
-   - Mario jumps backwards in time through recent snapshots while the HUD reflects the updating stack size: `[Z/U] Undo: 42`.
+   - Mario jumps backwards in time through recent snapshots while the HUD reflects the updating stack size: `[Z]Undo: 42`.
 2. **Demonstrating the Event Queue (FIFO):**
    - Collect multiple coins or defeat Goombas in rapid succession.
    - Observe the notification toasts at the top of the screen appearing one by one in chronological order.
-3. **Demonstrating Bubble Sort Metrics:**
+3. **Demonstrating Save & Resume State Persistence:**
+   - Press <kbd>F5</kbd> during gameplay to quick-save, or pause and press <kbd>M</kbd> to save and exit.
+   - Return to the Main Menu and demonstrate the live preview on the **Continue Game** button.
+   - Click Continue to show Mario resuming at the exact level, lives, health, score, and checkpoint coordinates!
+4. **Demonstrating Bubble Sort Metrics:**
    - From the Main Menu, open **Leaderboard & DSA Search**.
    - Press <kbd>B</kbd>. The screen executes `BubbleSort.sort()` and displays real-time metrics:
      `Bubble Sort Complete: 28 comparisons, 0 swaps, 1 passes (O(n) early-exit verified)!`
-4. **Demonstrating Linear Search with Step Trace:**
+5. **Demonstrating Linear Search with Step Trace:**
    - On the Leaderboard screen, press <kbd>L</kbd>.
    - A modal window pops up tracing the step-by-step search for player `"Damidu"` through every index until the match is located.
-5. **Demonstrating Recursive Binary Search:**
+6. **Demonstrating Recursive Binary Search:**
    - On the Leaderboard screen, press <kbd>S</kbd>.
    - A modal window opens displaying the binary search divide-and-conquer steps, showing `[Depth 1]`, `[Depth 2]`, middle index inspections, and search interval halving on descending data.
 
 ---
 
-## 7. Automated Testing Suite (JUnit 5)
+## 8. Automated Testing Suite (JUnit 5)
 
-The project includes an automated test suite comprising **30 test cases** covering every data structure, sorting method, searching algorithm, and collision boundary condition.
+The project includes an automated test suite comprising **33 test cases** covering every data structure, sorting method, searching algorithm, persistence engine, and collision boundary condition.
 
 To run the full suite:
 ```bash
@@ -376,72 +366,30 @@ BubbleSortTest          .....................  3 passed (100%)
 LinearSearchTest        .....................  2 passed (100%)
 BinarySearchTest        .....................  3 passed (100%)
 RecursionHelperTest     .....................  3 passed (100%)
+SaveManagerTest         .....................  3 passed (100%)
 CollisionManagerTest    .....................  5 passed (100%)
 -------------------------------------------------------------
-TOTAL: 30 tests, 0 failures, 100% pass rate
+TOTAL: 33 tests, 0 failures, 100% pass rate
 ```
 
 ---
 
-## 8. Viva Defense Questions & Answers
+## 9. Viva Defense Questions & Answers
 
 ### Q1: Why did you write your own data structures instead of using `java.util`?
 > *"The assignment requires demonstrating a deep understanding of memory management, pointer manipulation, and asymptotic complexity. By building `CustomLinkedList`, `CustomStack`, and `CustomQueue` from scratch, we manage head, tail, prev, and next pointers directly and enforce constraints like capacity-bound trimming."*
 
-### Q2: Why is a Doubly Linked List preferred over a Singly Linked List for the event log?
+### Q2: How is game progress saved and restored reliably?
+> *"State persistence is handled by `SaveManager.java`. It serializes the player name, current stage, lives, hearts, score, coins, and checkpoint position to a structured local CSV file (`save_progress.txt`). When resuming from the Main Menu, the game state machine loads these values into `GameScreen`, guaranteeing seamless continuity without data loss."*
+
+### Q3: Why is a Doubly Linked List preferred over a Singly Linked List for the event log?
 > *"In a Singly Linked List, removing from the tail requires traversing the entire list ($O(n)$) to find the penultimate node. In a Doubly Linked List, each node maintains a `prev` pointer, allowing `removeLast()` to update the tail in $O(1)$ constant time."*
 
-### Q3: Why does your Bubble Sort have an $O(n)$ best-case time complexity?
+### Q4: Why does your Bubble Sort have an $O(n)$ best-case time complexity?
 > *"We implemented an early-exit flag (`boolean swapped = false`). If a pass completes with zero swaps, the array is confirmed to be in sorted order. The algorithm terminates immediately after $n - 1$ comparisons, avoiding the remaining $n - 1$ passes."*
 
-### Q4: Why can't you use Binary Search to look up player names on your leaderboard?
+### Q5: Why can't you use Binary Search to look up player names on your leaderboard?
 > *"Binary Search requires the array to be sorted by the search key. Because our leaderboard is sorted by **score** (numerical order) rather than alphabetically by player name, binary search on names would yield incorrect results. Therefore, **Linear Search** is appropriate for name queries, while **Binary Search** is used for score queries."*
 
-### Q5: How do you prevent Stack Overflow in your recursive methods?
+### Q6: How do you prevent Stack Overflow in your recursive methods?
 > *"Each recursive method includes a well-defined base case that is reached monotonically. In the countdown, $n$ decrements towards $0$; in the coin bonus, remaining coins decrement to $0$. The maximum recursion depth is bounded ($n \le 100$), which requires less than a few kilobytes of stack space—well within the JVM's default 1024 KB thread stack limit."*
-
----
-
-### Project Package Structure Reference
-
-```
-com.damidu.supermariodsa
-├── SuperMarioGame.java          (Game entry & shared resource lifecycle)
-├── audio/
-│   └── SoundManager.java        (Procedural 8-bit sound waveform generator)
-├── dsa/
-│   ├── BinarySearch.java        (Recursive binary search with depth trace)
-│   ├── BubbleSort.java          (Manual bubble sort with early-exit flag)
-│   ├── CustomLinkedList.java    (Doubly linked list with iterator)
-│   ├── CustomQueue.java         (FIFO queue for event notifications)
-│   ├── CustomStack.java         (LIFO stack for movement undo)
-│   ├── LinearSearch.java        (Linear search with step-by-step trace)
-│   └── RecursionHelper.java     (Recursive countdown & coin bonus)
-├── level/
-│   ├── Level.java               (Level container using plain arrays)
-│   └── LevelManager.java        (World 1-1, 1-2, and 1-3 stage builder)
-├── model/
-│   ├── Coin.java                (Spinning collectible coin)
-│   ├── Enemy.java               (Goombas, Koopas, and Boss Bowser)
-│   ├── GameEvent.java           (Queue event container)
-│   ├── GoalFlag.java            (Level exit flagpole)
-│   ├── Platform.java            (Terrain, bricks, pipes, mystery blocks)
-│   ├── Player.java              (Mario kinematics, health, and rendering)
-│   ├── PlayerStateSnapshot.java (Stack undo snapshot record)
-│   └── PowerUp.java             (Super Mushroom and Star items)
-├── persistence/
-│   ├── LeaderboardEntry.java    (Leaderboard score record)
-│   ├── LeaderboardManager.java  (Plain array leaderboard file I/O)
-│   └── SaveManager.java         (Progress file persistence for continue)
-├── physics/
-│   └── CollisionManager.java    (Two-axis separated AABB collision engine)
-├── screens/
-│   ├── GameOverScreen.java      (Game over display and restart)
-│   ├── GameScreen.java          (Main camera, rendering, and game loop)
-│   ├── HowToPlayScreen.java     (In-game DSA guide and controls)
-│   ├── LeaderboardScreen.java   (Interactive DSA algorithm demonstrator)
-│   ├── MainMenuScreen.java      (Main menu navigation)
-│   └── VictoryScreen.java       (Game completion and bonus breakdown)
-└── ui/
-    └── HUD.java                 (Health hearts, lives, score, and queue toasts)
-```
