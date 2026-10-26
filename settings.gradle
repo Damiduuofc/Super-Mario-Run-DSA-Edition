@@ -1,0 +1,2 @@
+rootProject.name = 'SuperMarioDSA'
+include 'core', 'lwjgl3'

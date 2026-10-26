@@ -1,0 +1,40 @@
+apply plugin: 'application'
+
+sourceSets.main.resources.srcDirs += [rootProject.file('assets').path]
+
+application {
+    mainClass.set('com.damidu.supermariodsa.lwjgl3.Lwjgl3Launcher')
+}
+
+eclipse.project.name = appName + "-lwjgl3"
+
+dependencies {
+    implementation project(':core')
+    implementation "com.badlogicgames.gdx:gdx-backend-lwjgl3:$gdxVersion"
+    implementation "com.badlogicgames.gdx:gdx-platform:$gdxVersion:natives-desktop"
+}
+
+def os = System.getProperty('os.name').toLowerCase(Locale.ROOT)
+
+run {
+    workingDir = rootProject.file('assets').path
+    setIgnoreExitValue(true)
+
+    if (os.contains('mac')) {
+        // macOS GLFW requires LWJGL3 to run on the main thread
+        jvmArgs("-XstartOnFirstThread")
+    }
+}
+
+jar {
+    archiveBaseName.set(appName)
+    duplicatesStrategy(DuplicatesStrategy.EXCLUDE)
+    dependsOn configurations.runtimeClasspath
+    from { configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) } }
+    manifest {
+        attributes 'Main-Class': application.mainClass.get()
+    }
+    doLast {
+        file(archiveFile).setExecutable(true, false)
+    }
+}
