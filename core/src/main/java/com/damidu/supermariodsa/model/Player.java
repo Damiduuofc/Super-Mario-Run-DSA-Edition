@@ -34,6 +34,7 @@ public class Player {
     private boolean onGround;
     private boolean facingRight;
     private float stateTime;
+    private float jumpBufferTimer;
 
     // Gameplay Attributes (v1.1)
     private int health;
@@ -56,6 +57,7 @@ public class Player {
         this.onGround = false;
         this.facingRight = true;
         this.stateTime = 0f;
+        this.jumpBufferTimer = 0f;
 
         this.health = MAX_HEALTH;
         this.lives = 3;
@@ -74,6 +76,12 @@ public class Player {
         boolean jumpPressed = Gdx.input.isKeyJustPressed(Keys.W)
                 || Gdx.input.isKeyJustPressed(Keys.UP)
                 || Gdx.input.isKeyJustPressed(Keys.SPACE);
+
+        if (jumpPressed) {
+            jumpBufferTimer = 0.12f;
+        } else if (jumpBufferTimer > 0f) {
+            jumpBufferTimer -= delta;
+        }
 
         float currentSpeed = starPower ? MAX_SPEED * 1.35f : MAX_SPEED;
 
@@ -100,10 +108,11 @@ public class Player {
         }
 
         // Jump impulse: only allowed when on solid ground
-        if (jumpPressed && onGround) {
+        if (jumpBufferTimer > 0f && onGround) {
             float jumpImpulse = superSize ? JUMP_VELOCITY * 1.08f : JUMP_VELOCITY;
             velocity.y = jumpImpulse;
             onGround = false;
+            jumpBufferTimer = 0f;
         }
     }
 

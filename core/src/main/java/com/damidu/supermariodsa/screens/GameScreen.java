@@ -53,6 +53,7 @@ public class GameScreen implements Screen {
 
     private float snapshotTimer = 0f;
     private boolean paused = false;
+    private boolean undoPerformedThisFrame = false;
     private String pauseStatusMessage = null;
 
     // Recursive 3-2-1-GO Countdown State
@@ -84,6 +85,7 @@ public class GameScreen implements Screen {
         this.hud = new HUD(game.getFont(), game.getShapeRenderer());
 
         this.undoStack = new CustomStack<>(80);
+        this.undoStack.push(player.createSnapshot());
         this.eventQueue = new CustomQueue<>(40);
         this.eventHistoryList = new CustomLinkedList<>();
 
@@ -170,6 +172,11 @@ public class GameScreen implements Screen {
     }
 
     private void updateGameplay(float delta) {
+        if (undoPerformedThisFrame) {
+            undoPerformedThisFrame = false;
+            return;
+        }
+
         // Record undo snapshots periodically (DSA Stack)
         snapshotTimer += delta;
         if (snapshotTimer >= 0.35f) {
@@ -439,6 +446,7 @@ public class GameScreen implements Screen {
             if (!undoStack.isEmpty()) {
                 PlayerStateSnapshot snapshot = undoStack.pop();
                 player.restoreSnapshot(snapshot);
+                undoPerformedThisFrame = true;
                 game.getSoundManager().playJump();
                 eventQueue.enqueue(new GameEvent(GameEvent.EventType.UNDO_PERFORMED,
                         "Undo movement executed! (Stack size: " + undoStack.size() + ")", 0));
