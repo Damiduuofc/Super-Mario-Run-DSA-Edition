@@ -38,6 +38,8 @@ public class GameScreen implements Screen {
     private final SuperMarioGame game;
     private final OrthographicCamera camera;
     private final FitViewport viewport;
+    // Fixed screen-space camera for HUD / overlays (does not scroll with the world)
+    private final OrthographicCamera uiCamera;
 
     private final String playerName;
     private final int levelNumber;
@@ -71,6 +73,8 @@ public class GameScreen implements Screen {
 
         this.camera = new OrthographicCamera();
         this.viewport = new FitViewport(SuperMarioGame.VIRTUAL_WIDTH, SuperMarioGame.VIRTUAL_HEIGHT, camera);
+        this.uiCamera = new OrthographicCamera();
+        this.uiCamera.setToOrtho(false, SuperMarioGame.VIRTUAL_WIDTH, SuperMarioGame.VIRTUAL_HEIGHT);
 
         float initialX = (spawnX > 0) ? spawnX : level.getSpawnX();
         float initialY = (spawnY > 0) ? spawnY : level.getSpawnY();
@@ -126,8 +130,6 @@ public class GameScreen implements Screen {
     public void render(float delta) {
         float clampedDelta = Math.min(delta, 1f / 30f);
 
-        handleGlobalKeys();
-
         // 1. RECURSIVE COUNTDOWN PHASE
         if (inCountdown) {
             updateCountdown(clampedDelta);
@@ -144,6 +146,8 @@ public class GameScreen implements Screen {
             return;
         }
 
+        handleGlobalKeys();
+
         // 3. GAMEPLAY UPDATE
         updateGameplay(clampedDelta);
 
@@ -151,6 +155,7 @@ public class GameScreen implements Screen {
         renderWorld();
 
         // 5. RENDER HUD
+        game.getBatch().setProjectionMatrix(uiCamera.combined);
         game.getBatch().begin();
         hud.render(game.getBatch(), playerName, player, levelNumber, undoStack,
                 SuperMarioGame.VIRTUAL_WIDTH, SuperMarioGame.VIRTUAL_HEIGHT);
@@ -355,6 +360,7 @@ public class GameScreen implements Screen {
     }
 
     private void renderCountdownOverlay() {
+        game.getBatch().setProjectionMatrix(uiCamera.combined);
         game.getBatch().begin();
         game.getFont().setColor(Color.YELLOW);
         game.getFont().getData().setScale(3.0f);
@@ -371,7 +377,9 @@ public class GameScreen implements Screen {
     }
 
     private void renderPauseOverlay() {
-        game.getShapeRenderer().setProjectionMatrix(viewport.getCamera().combined);
+        Gdx.gl.glEnable(GL20.GL_BLEND);
+        Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
+        game.getShapeRenderer().setProjectionMatrix(uiCamera.combined);
         game.getShapeRenderer().begin(ShapeRenderer.ShapeType.Filled);
         game.getShapeRenderer().setColor(0f, 0f, 0f, 0.75f);
         game.getShapeRenderer().rect(0, 0, SuperMarioGame.VIRTUAL_WIDTH, SuperMarioGame.VIRTUAL_HEIGHT);
@@ -382,8 +390,9 @@ public class GameScreen implements Screen {
         game.getShapeRenderer().setColor(0.95f, 0.82f, 0.15f, 1f);
         game.getShapeRenderer().rect(160f, SuperMarioGame.VIRTUAL_HEIGHT - 130f, SuperMarioGame.VIRTUAL_WIDTH - 320f, 3f);
         game.getShapeRenderer().end();
+        Gdx.gl.glDisable(GL20.GL_BLEND);
 
-        game.getBatch().setProjectionMatrix(viewport.getCamera().combined);
+        game.getBatch().setProjectionMatrix(uiCamera.combined);
         game.getBatch().begin();
 
         game.getFont().setColor(Color.YELLOW);
@@ -437,8 +446,8 @@ public class GameScreen implements Screen {
     }
 
     private void handleGlobalKeys() {
-        if (Gdx.input.isKeyJustPressed(Keys.P) || Gdx.input.isKeyJustPressed(Keys.ESCAPE)) {
-            paused = !paused;
+        if (!paused && (Gdx.input.isKeyJustPressed(Keys.P) || Gdx.input.isKeyJustPressed(Keys.ESCAPE))) {
+            paused = true;
             pauseStatusMessage = null;
             game.getSoundManager().playJump();
         }

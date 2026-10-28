@@ -54,7 +54,8 @@ public class StartupHelper {
         command.addAll(jvmArgs);
         command.add("-cp");
         command.add(System.getProperty("java.class.path"));
-        command.add(System.getProperty("sun.java.command"));
+        // Name the main class explicitly: with "java -jar", sun.java.command is the jar path, not a class
+        command.add(Lwjgl3Launcher.class.getName());
 
         try {
             Process process = new ProcessBuilder(command).inheritIO().start();
